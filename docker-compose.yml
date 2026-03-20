@@ -21,6 +21,7 @@ services:
   web1:
     build: ./web
     restart: always
+    command: sh -c "mkdir -p /sessions && chown www-data:www-data /sessions && chmod 770 /sessions && apache2-foreground"
     environment:
       - DB_HOST=db-master
     volumes:
@@ -32,6 +33,7 @@ services:
   web2:
     build: ./web
     restart: always
+    command: sh -c "mkdir -p /sessions && chown www-data:www-data /sessions && chmod 770 /sessions && apache2-foreground"
     environment:
       - DB_HOST=db-master
     volumes:
@@ -61,8 +63,10 @@ services:
     restart: always
     environment:
       MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: app_db
     volumes:
       - ./mysql/slave:/etc/mysql/conf.d
+      - ./mysql/master/init.sql:/docker-entrypoint-initdb.d/init.sql
     depends_on:
       - db-master
     networks:
@@ -107,7 +111,8 @@ services:
   goaccess:
     image: allinurl/goaccess:latest
     container_name: goaccess
-    command: sh -c "touch /var/log/nginx/access.log && /usr/bin/goaccess /var/log/nginx/access.log -o /srv/report/index.html --log-format=COMBINED --date-format=%d/%b/%Y --time-format=%T --real-time-html --ws-url=ws://localhost:7890 --port=7890"
+    command: /var/log/nginx/access.log --log-format=COMBINED --date-format=%d/%b/%Y --time-format=%T -o /srv/report/index.html --real-time-html --port=7890
+    restart: always
     volumes:
       - ./logs/nginx:/var/log/nginx
       - ./logs/goaccess:/srv/report

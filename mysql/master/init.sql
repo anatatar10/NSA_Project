@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NULL,
     password_hash VARCHAR(255) NULL,
-    confirmed TINYINT(1) NOT NULL DEFAULT 1
+    confirmed TINYINT(1) NOT NULL DEFAULT 1,
+    confirmation_token VARCHAR(64) NULL
 );
 INSERT INTO users (name, email, confirmed)
 SELECT 'Initial User', 'initial@works-on-my-machine.rip', 1
