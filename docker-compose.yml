@@ -1,5 +1,4 @@
 services:
-  # --- 1. REVERSE PROXY & LOAD BALANCER (Port 8080 & 8443) ---
   proxy:
     image: nginx:alpine
     container_name: nsa-proxy
@@ -11,119 +10,156 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
       - ./logs/nginx:/var/log/nginx
-    networks:
-      - frontend
+      - ./logs/goaccess:/var/log/goaccess:ro
     depends_on:
       - web1
       - web2
+      - phpmyadmin
+      - goaccess
+    networks:
+      - frontend
 
-  # --- 2. WEB APP REPLICAS (2 Replicas) ---
   web1:
     build: ./web
+    container_name: web1
     restart: always
-    command: sh -c "mkdir -p /sessions && chown www-data:www-data /sessions && chmod 770 /sessions && apache2-foreground"
     environment:
-      - DB_HOST=db-master
+      DB_MASTER_HOST: db-master
+      DB_SLAVE_HOST: db-slave
+      DB_NAME: app_db
+      DB_USER: appuser
+      DB_PASS: apppass
+      APP_DOMAIN: works-on-my-machine.rip
+      APP_PORT: 8443
+      MAIL_HOST: mailserver
+      MAIL_PORT: 1025
+      MAIL_FROM: noreply@works-on-my-machine.rip
     volumes:
       - sessions:/sessions
+    depends_on:
+      - db-master
+      - db-slave
+      - mailserver
     networks:
       - frontend
       - backend
 
   web2:
     build: ./web
+    container_name: web2
     restart: always
-    command: sh -c "mkdir -p /sessions && chown www-data:www-data /sessions && chmod 770 /sessions && apache2-foreground"
     environment:
-      - DB_HOST=db-master
+      DB_MASTER_HOST: db-master
+      DB_SLAVE_HOST: db-slave
+      DB_NAME: app_db
+      DB_USER: appuser
+      DB_PASS: apppass
+      APP_DOMAIN: works-on-my-machine.rip
+      APP_PORT: 8443
+      MAIL_HOST: mailserver
+      MAIL_PORT: 1025
+      MAIL_FROM: noreply@works-on-my-machine.rip
     volumes:
       - sessions:/sessions
+    depends_on:
+      - db-master
+      - db-slave
+      - mailserver
     networks:
       - frontend
       - backend
 
-  # --- 3. DATABASE MASTER (Writes) ---
   db-master:
-    image: mariadb:10.6
+    image: mariadb:10.11
     container_name: db-master
     restart: always
     environment:
-      MARIADB_ROOT_PASSWORD: root
+      MARIADB_ROOT_PASSWORD: rootpass
       MARIADB_DATABASE: app_db
+      MARIADB_USER: appuser
+      MARIADB_PASSWORD: apppass
+      MARIADB_REPLICATION_USER: repl
+      MARIADB_REPLICATION_PASSWORD: replpass
     volumes:
-      - ./mysql/master:/etc/mysql/conf.d
-      - ./mysql/master/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_master_data:/var/lib/mysql
+      - ./mysql/master/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
       - backend
 
-  # --- 4. DATABASE SLAVE (Reads) ---
   db-slave:
-    image: mariadb:10.6
+    image: mariadb:10.11
     container_name: db-slave
     restart: always
     environment:
-      MARIADB_ROOT_PASSWORD: root
+      MARIADB_ROOT_PASSWORD: rootpass
       MARIADB_DATABASE: app_db
+      MARIADB_USER: appuser
+      MARIADB_PASSWORD: apppass
+      MARIADB_MASTER_HOST: db-master
+      MARIADB_REPLICATION_USER: repl
+      MARIADB_REPLICATION_PASSWORD: replpass
     volumes:
-      - ./mysql/slave:/etc/mysql/conf.d
-      - ./mysql/master/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_slave_data:/var/lib/mysql
+      - ./mysql/slave/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/slave/init-slave.sh:/docker-entrypoint-initdb.d/02-init-slave.sh:ro
     depends_on:
       - db-master
     networks:
       - backend
 
-  # --- 5. PHPMYADMIN (DB Management) ---
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin
+    image: phpmyadmin/phpmyadmin:latest
     container_name: phpmyadmin
+    restart: always
     environment:
       PMA_HOSTS: db-master,db-slave
-    ports:
-      - "8081:80"
+      PMA_PORT: 3306
     networks:
+      - frontend
       - backend
 
-  # --- 6. MAIL SERVER (Email Confirmation) ---
   mailserver:
-    image: mailserver/docker-mailserver:latest
+    image: axllent/mailpit:latest
     container_name: mailserver
-    hostname: mail.works-on-my-machine.rip
-    domainname: works-on-my-machine.rip
-    environment:
-      - ENABLE_SPAMASSASSIN=0
-      - ENABLE_CLAMAV=0
-      - ENABLE_FAIL2BAN=0
+    restart: always
+    ports:
+      - "8025:8025"
     networks:
       - backend
 
-  # --- 7. CENTRALIZED LOGGING (Dozzle) ---
   dozzle:
     image: amir20/dozzle:latest
     container_name: dozzle-logs
+    restart: always
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "8888:8080"
     networks:
       - backend
 
-  # --- 8. WEB ACCESS LOG ANALYZER ---
   goaccess:
     image: allinurl/goaccess:latest
     container_name: goaccess
-    command: /var/log/nginx/access.log --log-format=COMBINED --date-format=%d/%b/%Y --time-format=%T -o /srv/report/index.html --real-time-html --port=7890
     restart: always
+    command: >
+      /var/log/nginx/access.log
+      --log-format=COMBINED
+      --real-time-html
+      --port=7890
+      --ws-url=wss://works-on-my-machine.rip:8443/goaccess/ws
+      -o /srv/report/index.html
     volumes:
       - ./logs/nginx:/var/log/nginx
       - ./logs/goaccess:/srv/report
-    ports:
-      - "7890:7890"
     networks:
       - frontend
-    depends_on:
-      - proxy
 
 volumes:
+  db_master_data:
+  db_slave_data:
   sessions:
 
 networks:
