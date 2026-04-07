@@ -88,17 +88,18 @@ if (isset($_POST['register'])) {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $token = bin2hex(random_bytes(32));
             $ok = exec_prepared($db_master, 'INSERT INTO users (name, email, password_hash, confirmed, confirmation_token) VALUES (?, ?, ?, 0, ?)', 'ssss', $name, $email, $hash, $token);
-            if ($ok) {
-                $host = $_SERVER['HTTP_HOST'] ?? ($appDomain . ':' . $appPort);
-                $confirmLink = 'https://' . $host . '/?confirm=' . urlencode($token);
-                if (send_confirmation_email($email, $confirmLink, $mailFrom)) {
-                    $message = "Registration successful. Check Mailpit for confirmation email.";
-                    $messageType = 'info';
-                } else {
-                    $message = "User created, but email sending failed.";
-                    $messageType = 'warning';
-                }
-            } else {
+if ($ok) {
+    $confirmLink = 'https://' . $appDomain . ':' . $appPort . '/?confirm=' . urlencode($token);
+
+    if (send_confirmation_email($email, $confirmLink, $mailFrom)) {
+        $message = "Registration successful. Check Mailpit for confirmation email.";
+        $messageType = 'info';
+    } else {
+        $message = "User created, but email sending failed.";
+        $messageType = 'warning';
+    }
+}
+	 else {
                 $message = "Registration failed.";
                 $messageType = 'error';
             }

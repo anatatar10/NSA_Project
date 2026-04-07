@@ -110,12 +110,14 @@ services:
       - backend
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin:5.2.1-apache
+    platform: linux/arm64
     container_name: phpmyadmin
     restart: always
     environment:
       PMA_HOSTS: db-master,db-slave
       PMA_PORT: 3306
+      PMA_ABSOLUTE_URI: https://works-on-my-machine.rip:8443/phpmyadmin/
     networks:
       - frontend
       - backend
